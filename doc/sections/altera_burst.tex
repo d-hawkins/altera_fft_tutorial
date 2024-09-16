@@ -1,0 +1,306 @@
+% =============================================================================
+\section{Altera Burst I/O FFT}
+% =============================================================================
+\label{sec:burst_fft}
+
+% -----------------------------------------------------------------------------
+\subsection{Quartus IP Generation}
+% -----------------------------------------------------------------------------
+
+\begin{enumerate}
+\item Start Quartus.
+
+The version used to develop this tutorial was:
+\begin{verbatim}
+tcl> puts $quartus(version)
+Version 22.1std.1 Build 917 02/14/2023 SC Lite Edition
+\end{verbatim}
+%$
+\item Open the FFT IP core parameter editor.
+%
+\begin{itemize}
+\item Select the IP Catalog search tool.
+\item Find the FFT IP core.
+\item Double-mouse-click the FFT core to open the parameter editor.
+\end{itemize}
+%
+\item Configure the FFT IP variation.
+%
+\begin{itemize}
+\item \textbf{Create IP Variation}
+\begin{itemize}
+\item Entity name: \texttt{altera\_burst\_fft}
+\item Save in the directory:\\
+\texttt{C:/github/altera\_fft\_tutorial/designs/burst/build/altera\_burst\_fft}
+\end{itemize}
+%
+\item \textbf{Target Device}
+\begin{itemize}
+\item Family: Cyclone V
+\item Device: 5CEBA2F17A7
+\end{itemize}
+\item Click the \emph{OK} button.
+\end{itemize}
+%
+\item Configure the FFT IP parameters.
+%
+\begin{itemize}
+\item \textbf{Transform}
+\begin{itemize}
+\item Length: 1024
+\item Direction: Bi-directional
+\end{itemize}
+%
+\item \textbf{I/O}
+\begin{itemize}
+\item Data Flow: Burst
+\item Input Order: Natural
+\item Output Order: Natural
+\end{itemize}
+%
+\item \textbf{Data and Twiddle}
+\begin{itemize}
+\item Representation: Block Floating Point
+\item Data Input Width: 16 bits
+\item Twiddle Width: 16 bits
+\item Data Output Width: 16 bits
+\end{itemize}
+%
+\item Click the menu option \emph{File}$\rightarrow$\emph{Save}, and then
+click the save dialog \emph{Close} button.
+\end{itemize}
+%
+The build directory then contains the Qsys file
+\texttt{build/altera\_burst\_fft.qsys},
+along with the directory \texttt{build/altera\_burst\_fft} that contains
+files, but no subdirectories.
+%
+% -----------------------------------------------------------------------------
+% Altera Burst FFT
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_fft_ip_parameter_editor.png}
+  \end{center}
+  \caption{Altera Burst FFT IP Parameter Editor view.}
+  \label{fig:altera_burst_fft_ip_parameter_editor}
+\end{figure}
+% -----------------------------------------------------------------------------
+%
+Figure~\ref{fig:altera_burst_fft_ip_parameter_editor} shows the IP Parameter
+Editor view.
+
+%
+\newpage
+\item Generate the synthesis and simulation code.
+%
+\begin{itemize}
+\item Click the menu option \emph{Generate}$\rightarrow$\emph{Generate HDL}.
+\item Under the \textbf{Simulation} section change the simulation model
+pull-down to Verilog.
+\item The other settings do not need to be changed.
+\item Click the \emph{Generate} button, and then click the
+generate dialog \emph{Close} button.
+\end{itemize}
+%
+The build directory now contains:
+\begin{itemize}
+\item \texttt{build/altera\_burst\_fft/synthesis}
+\item \texttt{build/altera\_burst\_fft/simulation}
+\end{itemize}
+
+\item Generate the Testbench System simulation code.
+%
+\begin{itemize}
+\item Click the menu option \emph{Generate}$\rightarrow$\emph{Generate
+Testbench System}.
+\item The default settings do not need to be changed.
+\item Click the \emph{Generate} button and then click the
+generate dialog \emph{Close} button.
+\end{itemize}
+%
+The build directory now contains:
+\begin{itemize}
+\item \texttt{build/altera\_burst\_fft/testbench}
+\end{itemize}
+
+\item Generate the example design.
+%
+\begin{itemize}
+\item Click the menu option \emph{Generate}$\rightarrow$\emph{Generate
+Example Design}$\rightarrow$\emph{fft\_ii\_0}.
+\item Change the output directory to:\\
+\texttt{C:/github/altera\_fft\_tutorial/designs/burst/build/altera\_burst\_fft\_example}
+\item Click the \emph{OK} button, and then click the
+generate dialog \emph{Close} button.
+\end{itemize}
+%
+The build directory now contains:
+\begin{itemize}
+\item \texttt{build/altera\_burst\_fft\_example}
+\end{itemize}
+
+%
+\item Click the \emph{Finish} button.
+\item Exit Quartus.
+\end{enumerate}
+
+\clearpage
+% -----------------------------------------------------------------------------
+\subsection{Questasim Simulation}
+% -----------------------------------------------------------------------------
+
+\begin{enumerate}
+\item Start Questasim.
+
+The version used to develop this tutorial was the Questa Intel Starter
+Edition version:
+%
+\begin{verbatim}
+Questa> vsim -version
+# Questa  Intel Starter FPGA Edition-64 vsim 2021.2 Simulator 2021.04
+  Apr 14 2021
+\end{verbatim}
+%
+\item Change to the mentor simulation script directory.
+%
+\begin{verbatim}
+Questa> cd C:/github/altera_fft_tutorial/designs/burst/build/
+  altera_burst_fft_example/simulation_scripts/mentor
+\end{verbatim}
+%$
+\item Source the simulation script.
+%
+\begin{verbatim}
+Questa> source msim_setup.tcl
+\end{verbatim}
+%
+\item Build the example design.
+%
+\begin{verbatim}
+Questa> ld_debug
+\end{verbatim}
+%
+\item Add the FFT core signals to the waveform window.
+%
+\begin{itemize}
+\item Expand the design hierarchy and select\\
+\texttt{test\_program/tb/fft\_ii\_0\_example\_design\_inst/core}
+\item Right-mouse-click and select \emph{Add Wave}
+\end{itemize}
+%
+The Tcl console will contain the equivalent Tcl command
+%
+\begin{verbatim}
+add wave -position insertpoint sim:/test_program/tb/
+  fft_ii_0_example_design_inst/core/*
+\end{verbatim}
+%
+\item Run the simulation.
+%
+\begin{verbatim}
+Questa> run -a
+\end{verbatim}
+%
+When the \emph{Finish Vsim} dialog appears, click \emph{No}, so that
+Questasim does not exit.
+%
+\item View the simulation waveforms.
+
+Figure~\ref{fig:altera_burst_fft_example_waveforms} shows the example design
+waveforms. Waveform dividers were added to show the FFT input (sink) and FFT
+output (source) signals. The FFT core input \texttt{ready} was highlighted in
+cyan to show when the core was ready for input data, while the core
+output \texttt{valid} was highlighted in pink to show then the output
+data was valid.
+
+The example design testbench does not implement any \emph{verification}, i.e.,
+it is not a self-checking testbench that compares the FFT core output with
+an expected output. The example design testbench generates FFT core input data
+by reading data from real and imaginary files, and it writes output data
+to real, imaginary, and exponent files.
+
+The example design can be used to understand the FFT core, and as the basis
+to develop a self-checking testbench.
+%
+\item Exit Questasim.
+\end{enumerate}
+
+% -----------------------------------------------------------------------------
+% Altera Burst FFT
+% -----------------------------------------------------------------------------
+%
+\begin{landscape}
+\begin{figure}[p]
+  \begin{center}
+    \includegraphics[width=210mm]
+    {figures/altera_burst_fft_example_waveforms.png}
+  \end{center}
+  \caption{Altera Burst FFT example design waveforms.}
+  \label{fig:altera_burst_fft_example_waveforms}
+\end{figure}
+\end{landscape}
+% -----------------------------------------------------------------------------
+
+\clearpage
+% -----------------------------------------------------------------------------
+\subsection{MATLAB Model}
+% -----------------------------------------------------------------------------
+
+
+\begin{enumerate}
+\item Start MATLAB.
+
+The version used to develop this tutorial was R2023b:
+%
+\begin{verbatim}
+>> version
+   '23.2.0.2485118 (R2023b) Update 6'
+\end{verbatim}
+%
+\item Change to the MATLAB simulation script directory.
+%
+\begin{verbatim}
+>> cd 'C:/github/altera_fft_tutorial/designs/burst/build/
+   altera_burst_fft_example/Matlab_model'
+\end{verbatim}
+
+\item Copy the mentor input stimulus files to the MATLAB directory.
+%
+\begin{verbatim}
+fft_ii_0_example_design_real_input.txt
+fft_ii_0_example_design_imag_input.txt
+\end{verbatim}
+
+\item Run the example design testbench script.
+%
+\begin{verbatim}
+>> fft_ii_0_example_design_tb
+\end{verbatim}
+%
+The script generates three output files
+%
+\begin{verbatim}
+fft_ii_0_example_design_real_output_c_model.txt
+fft_ii_0_example_design_imag_output_c_model.txt
+fft_ii_0_example_design_exponent_out_c_model.txt
+\end{verbatim}
+
+\item Compare the MATLAB output files to those in the mentor directory.
+
+The mentor directory filenames are:
+%
+\begin{verbatim}
+fft_ii_0_example_design_real_output.txt
+fft_ii_0_example_design_imag_output.txt
+fft_ii_0_example_design_exponent_out.txt
+\end{verbatim}
+%
+The files all match (as long as minor whitespace differences are ignored).
+%
+\item Exit MATLAB.
+\end{enumerate}
+%
+The MATLAB testbench demonstrates the use of the MATLAB model.

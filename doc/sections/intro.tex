@@ -1,0 +1,28 @@
+% =============================================================================
+\section{Introduction}
+% =============================================================================
+\label{sec:intro}
+
+This document contains a tutorial and analysis of the
+\href{https://www.intel.com/content/www/us/en/products/details/fpga/intellectual-property/dsp/fft.html}
+{Altera FFT IP Core}~\cite{Altera_FFT_UG_2017}.
+
+The Altera FFT IP Core features are;
+%
+\begin{itemize}
+%
+\item Version: Last updated for Quartus version 17.1 (2017)
+%
+\item Burst I/O and Streaming FFT features:
+\begin{itemize}
+\item Type: Forward or Inverse
+\item Scaling: Block floating-point
+\item Size: 64-points to 65536-points ($2^N$ for $6 \le N \le 16$)
+\item Width: 8-bits to 32-bits
+\item Input Order: Natural
+\item Output Order: Natural
+\end{itemize}
+%
+\end{itemize}
+%
+The tutorial was written using Quartus Prime Lite version 22.1 under Windows 10.

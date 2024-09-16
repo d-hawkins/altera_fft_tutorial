@@ -1,0 +1,1004 @@
+% =============================================================================
+\section{MATLAB Burst I/O FFT Analysis}
+% =============================================================================
+\label{sec:burst_analysis}
+
+This section analyzes the performance of the Burst I/O FFT using input
+stimulus with known FFT bit-growth properties. Input stimulus used in
+the following sections includes: impulse inputs, constant (DC) inputs,
+complex-valued exponential inputs, uniform noise,
+Gaussian noise, bandpass noise, and notch-filtered noise.
+The FFT was configured for 18-bit data and 18-bit twiddles.
+
+% -----------------------------------------------------------------------------
+\subsection{Radix-4 Burst I/O FFT Model}
+% -----------------------------------------------------------------------------
+
+The Altera Burst I/O FFT is based on a radix-4 decimation-in-frequency (DIF)
+architecture with integer input and block floating-point (BFP) output, i.e.,
+the input uses real and imaginary integer values, while the output uses
+real and imaginary integer values along with an exponent indicating the
+number of right-shifts of the data that occurred during FFT
+processing~\cite{Altera_FFT_UG_2017}.
+
+The Altera FFT MATLAB model was used to create the Altera FFT spectra in this
+document. The Altera FFT spectra have signal-to-quantization noise floor that
+is 12dB (2-bits) lower than expected. Since the Altera FFT MATLAB source code
+is not provided, the cause of this loss in signal-to-noise noise is not clear.
+A radix-4 block floating-point FFT model was developed to compare to the
+Altera FFT model.
+
+The maximum scaling of a radix-4 butterfly is 4, and the maximum scaling of
+the twiddle stage is $\sqrt{2}$, so the maximum total scaling is $4\sqrt{2}$
+or a bit-growth of $\log_2(4\sqrt{2}) = 2.5$-bits. A radix-4 block
+floating-point FFT operates by monitoring the 3 most-significant magnitude
+bits of the real and imaginary components at each FFT stage.
+%
+When the FFT data is loaded into memory, one complex-valued sample per clock
+period over $N$ clock periods, the 3 most-significant magnitude bits on
+each real and imaginary value are compared to the respective sign-bit, and the
+location of the highest magnitude bit is tracked as a scale factor to apply on
+the \emph{next pass}.
+%
+When the FFT is processing data, 4 complex-valued samples are processed
+per clock period over $N/4$ clock periods. The FFT data first passes through
+a scaling stage, where the scale factor determined on the \emph{previous pass}
+is applied The data then passes through the radix-4 and twiddle multipliers,
+and again, the 3 most-significant magnitude bits are compared to the sign-bit,
+and the location of the highest magnitude bit is tracked as a scale factor to
+apply on the \emph{next pass}.
+
+As an example, consider the FFT of 18-bit data with 18-bit twiddles. The input
+data can use all 18-bits, eg., the 18-bit real or imaginary signed input values
+can have the form
+%
+\begin{center}
+\texttt{sX\_XXXX\_XXXX\_XXXX\_XXXX}
+\end{center}
+%
+and as that data is written to memory, the FFT control logic determines the
+scale factor required on the next pass. The data read from memory passes
+through the scaling logic, and is scaled (right-shifted) to clear the
+3 most-significant magitude bits, creating 18-bit values with 4
+most-significant-bits (MSBs) of repeated sign bits, i.e.,
+%
+\begin{center}
+\texttt{ss\_ssXX\_XXXX\_XXXX\_XXXX}
+\end{center}
+%
+As this data passes through the radix-4 and twiddle stages, the FFT control logic
+determines the scale factor to apply on the next pass.
+%
+The exponent is incremented by the scale factor applied during each FFT stage,
+i.e., by 0, 1, 2, or 3. The exponent code tracks the total
+number of shifts applied by the scaling stage. The scale factor calculated
+during the last FFT stage is not applied and is not added to the exponent code.
+The FFT output data may have 1, 2, 3, or 4 repeated sign-bits.
+
+The scaling (right-shifting) logic and twiddle multiplier \emph{must} be
+rounded  correctly, eg., truncation should not be used, as it introduces
+a DC bias (offset) into the data.
+%
+Figure~\ref{fig:radix4_bfp_bandpass_truncate} shows how truncation DC bias
+results in a DC spike (and noise plateaus) in the spectra (FFT output).
+
+The quantization noise floor for a radix-4 BFP FFT is 3.5-bits above the
+quantization noise floor for the input bit-width, i.e., for an 18-bit input,
+the quantization noise floor when BFP exponent codes are being exercised
+is 3-bits less due to the BFP encoding, and another 0.5-bit less due to
+quantization (rounding) in the scaling and twiddle logic.
+
+\clearpage
+% -----------------------------------------------------------------------------
+% Bandpass noise spectra for 18-bit
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_bandpass_18_18_n18dB_scale_truncate.pdf}\\
+    (a) Scale truncation
+  \end{center}
+  \hfil
+  \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_bandpass_18_18_n18dB_product_truncate.pdf}\\
+    (b) Product truncation
+  \end{center}
+  \caption{Bandpass noise spectra with DC spikes due to truncation.}
+  \label{fig:radix4_bfp_bandpass_truncate}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+\clearpage
+% -----------------------------------------------------------------------------
+% Impulse phasors
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=0.5\textwidth]
+    {figures/altera_burst_impulse_18_18_impulses.pdf}
+  \end{center}
+  \caption{Impulse phasors.}
+  \label{fig:impulse_phasors}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+%
+% -----------------------------------------------------------------------------
+\subsection{Impulse Input}
+% -----------------------------------------------------------------------------
+
+The FFT of an impulse generates a constant magnitude FFT response. If the
+impulse is injected into input sample $x[0]$, then the FFT response for
+each channel $X[k]$ is the same as $x[0]$, eg.,
+%
+\begin{verbatim}
+>> N=8;x=zeros(N,1);x(1)=1-1j;X=fft(x);unique(X)
+1.0000 - 1.0000i
+\end{verbatim}
+%
+If the impulse is injected into input sample $x[1]$, then the FFT response
+is a period of a complex-valued exponential, eg.,
+%
+\begin{verbatim}
+>> N=8;x=zeros(N,1);x(2)=1-1j;X=fft(x);X
+X =
+   1.0000 - 1.0000i
+   0.0000 - 1.4142i
+  -1.0000 - 1.0000i
+  -1.4142 + 0.0000i
+  -1.0000 + 1.0000i
+   0.0000 + 1.4142i
+   1.0000 + 1.0000i
+   1.4142 + 0.0000i
+\end{verbatim}
+%
+Injecting an impulse into input sample $x[1]$ exercises more
+features of the radix-4 butterfly and twiddle logic.
+%
+Figure~\ref{fig:impulse_phasors} shows the sixteen impulse phasors used
+as Altera FFT input stimulus.
+
+Figure~\ref{fig:altera_burst_impulse} shows the Altera Burst I/O FFT
+frequency responses for the sixteen impulses, while
+Figure~\ref{fig:radix4_bfp_impulse} shows the Radix-4 BFP FFT
+frequency responses.
+%
+Figures~\ref{fig:altera_burst_impulse_error}
+and~\ref{fig:radix4_bfp_impulse_error} show polar plots of the error
+(difference between the MATLAB FFT) for the first six impulses.
+%
+The polar plots imply that the Radix-4 BFP error is larger, however,
+that is an artifact of the normalization. The error plots were generated
+as the error relative to the real or imaginary integer values by
+scaling the MATLAB FFT by the exponent code.
+%
+The Altera Burst I/O FFT exponent codes were 5 and 6, whereas the
+Radix-4 BFP FFT exponent codes were 3 and 4, i.e., 2-bits or a scale
+factor of 4 smaller, so the Radix-4 BFP error is 2.43/4.00 = 0.61 on
+the same scale as the Altera Burst I/O FFT.
+
+\clearpage
+% -----------------------------------------------------------------------------
+% Altera Burst FFT Impulse Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.55\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_impulse_18_18_real.pdf}\\
+    \vskip1mm
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_impulse_18_18_imag.pdf}\\
+    (a) Impulse response versus channel
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.45\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_impulse_18_18_polar.pdf}\\
+    (b) Impulse response polar
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.55\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_impulse_18_18_error_real.pdf}\\
+    \vskip2mm
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_impulse_18_18_error_imag.pdf}\\
+    (c) Impulse response error versus channel
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.45\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar.pdf}\\
+    (d) Impulse response error polar
+    \end{center}
+  \end{minipage}
+  \caption{Altera Burst I/O FFT impulse response.}
+  \label{fig:altera_burst_impulse}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Radix-4 BFP FFT Impulse Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.55\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_impulse_18_18_real.pdf}\\
+    \vskip1mm
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_impulse_18_18_imag.pdf}\\
+    (a) Impulse response versus channel
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.45\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_impulse_18_18_polar.pdf}\\
+    (b) Impulse response polar
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.55\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_real.pdf}\\
+    \vskip2mm
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_imag.pdf}\\
+    (c) Impulse response error versus channel
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.45\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar.pdf}\\
+    (d) Impulse response error polar
+    \end{center}
+  \end{minipage}
+  \caption{Radix-4 BFP FFT impulse response.}
+  \label{fig:radix4_bfp_impulse}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Altera Burst FFT Polar Error Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar_1.pdf}\\
+    (a) Impulse (1.00, 0.00)
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar_2.pdf}\\
+    (b) Impulse (1.00, -0.41)
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar_3.pdf}\\
+    (c) Impulse (1.00, -1.00)
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar_4.pdf}\\
+    (d) Impulse (0.41, -1.00)
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar_5.pdf}\\
+    (e) Impulse (0.00, -1.00)
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/altera_burst_impulse_18_18_error_polar_6.pdf}\\
+    (f) Impulse (-0.41, -1.00)
+    \end{center}
+  \end{minipage}
+  \caption{Altera Burst I/O FFT impulse error polar responses (first six).}
+  \label{fig:altera_burst_impulse_error}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Radix-4 BFP FFT Polar Error Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar_1.pdf}\\
+    (a) Impulse (1.00, 0.00)
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar_2.pdf}\\
+    (b) Impulse (1.00, -0.41)
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar_3.pdf}\\
+    (c) Impulse (1.00, -1.00)
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar_4.pdf}\\
+    (d) Impulse (0.41, -1.00)
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar_5.pdf}\\
+    (e) Impulse (0.00, -1.00)
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.8\textwidth]
+    {figures/radix4_bfp_impulse_18_18_error_polar_6.pdf}\\
+    (f) Impulse (-0.41, -1.00)
+    \end{center}
+  \end{minipage}
+  \caption{Radix-4 BFP FFT impulse error polar responses (first six).}
+  \label{fig:radix4_bfp_impulse_error}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+\clearpage
+% -----------------------------------------------------------------------------
+% Exponent Codes Analysis
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[t]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.95\textwidth]
+    {figures/altera_burst_exp_codes_18_18_impulse.pdf}\\
+    (a) Altera Burst I/O input impulse sweep
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.95\textwidth]
+    {figures/radix4_bfp_exp_codes_18_18_impulse.pdf}\\
+    (b) Radix-4 BFP input impulse sweep
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.95\textwidth]
+    {figures/altera_burst_exp_codes_18_18_constant.pdf}\\
+    (c) Altera Burst I/O input constant sweep
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=0.95\textwidth]
+    {figures/radix4_bfp_exp_codes_18_18_constant.pdf}\\
+    (d) Radix-4 BFP input constant sweep
+    \end{center}
+  \end{minipage}
+  \caption{Exponent codes measured using impulse and constant sweeps.}
+  \label{fig:altera_burst_exp_codes}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+\subsection{Exponent Codes Analysis}
+% -----------------------------------------------------------------------------
+
+Figure~\ref{fig:altera_burst_exp_codes} shows the exponent codes generated
+by the Altera Burst I/O and Radix-4 BFP FFTs for impulse and constant
+inputs with real and imaginary amplitudes that are the maximum positive
+value or negative value for the bit-width indicated on the $x$-axis.
+
+Figure~\ref{fig:altera_burst_exp_codes} shows that the
+Radix-4 BFP FFT operates as expected;
+%
+\begin{itemize}
+\item \textbf{Impulse Inputs}
+
+An impulse input does not have bit-growth through the FFT.
+Figure~\ref{fig:altera_burst_exp_codes}(b) shows that for input impulses
+that set any of the 3 MSBs of the input word, the exponent code is non-zero.
+
+\item \textbf{Constant Inputs}
+
+A constant input has a bit-growth of $\log_2(N)$ through the FFT.
+For a 1024-point FFT, the bit-growth will be 10-bits. An input impulse
+with a 17-bit magnitude will have a 27-bit output magnitude, so the
+expected output exponent value is 10 or 11.
+Figure~\ref{fig:altera_burst_exp_codes}(d) shows that for the 1024-point
+FFT and the largest input, the exponent code is 11, and that as the
+input amplitude is reduced, the exponent code also reduces.
+\end{itemize}
+
+\clearpage
+Figure~\ref{fig:altera_burst_exp_codes} shows that the
+Altera Burst I/O FFT does not operate as expected;
+%
+\begin{itemize}
+\item \textbf{Impulse Inputs}
+
+Figure~\ref{fig:altera_burst_exp_codes}(a) shows that for input impulses,
+the exponent code is at least 2, and for large input signals, the
+exponent code increases up to 6 for positive inputs and up to 5 for
+negative inputs!
+
+\item \textbf{Constant Inputs}
+
+Figure~\ref{fig:altera_burst_exp_codes}(c) shows that for the 1024-point
+FFT the full-scale input has an exponent code of 12 for positive inputs,
+but an exponent code of 11 for negative inputs!
+
+\end{itemize}
+%
+The Altera implementation of block floating-point appears to have two
+implementation details that are not documented.
+%
+\begin{enumerate}
+\item \textbf{The input is unconditionally scaled by 2-bits}
+
+The Altera burst I/O FFT appears to scale the input by 2-bits regardless
+of the input amplitude. This could be due to the Altera Burst I/O
+FFT implementing the block exponent scaling after the radix-4 and twiddle
+logic. Scaling after the radix-4 and twiddle logic requires the control
+logic to track two scale factors; the scale factor being applied during
+the current stage, and monitoring of the MSBs of the current stage
+calculations to determine the scale factor to apply during the next stage.
+Block floating-point scaling implemented after the radix-4 and twiddle
+logic requires 5 guard bits, rather than 3 guard bits.
+
+The Altera Burst I/O FFT should not require a 2-bit unconditional shift,
+as the core could monitor the scaling over the 5 guard bits.
+
+\item \textbf{Positive and negative inputs result in different scaling}
+
+The cause of this discrepancy appears to be due to Altera's choice to
+round up positive values, rather than round toward zero (or to saturate).
+
+\begin{enumerate}
+\item Full-scale positive input impulse
+%
+\begin{verbatim}
+>> x = zeros(1024,1);x(1)=2^(Bx-1)-1;
+>> X=altera_burst_fft_model(x,Bx,Bx,N,0)
+       data: [1024x1 double]
+   exponent: 6
+\end{verbatim}
+%
+$(2^{(Bx-1)}-1) = \text{1FFFFh}$ with an exponent code of 6, implies a
+binary point at\newline \verb+01_1111_1111_11.11_1111+ and the 12-bit
+MSBs round up to the 13-bit number\newline \verb+0_1000_0000_0000 (800h)+,
+where an additional bit was required to represent the sign. The 18-bit
+number using during the next radix-4 pass is the sign-extended
+value\newline\verb+00_0000_1000_0000_0000 (00800h)+ or 2048.
+
+\item Negative of the full-scale positive input impulse
+%
+\begin{verbatim}
+>> x = zeros(1024,1);x(1)=-(2^(Bx-1)-1);
+>> X=altera_burst_fft_model(x,Bx,Bx,N,0)
+      data: [1024x1 double]
+  exponent: 5
+\end{verbatim}
+%
+$-(2^{(Bx-1)}-1) = \text{20001h}$ with an exponent code of 5, implies a
+binary point at\newline \verb+10_0000_0000_000.0_0001+ and the 12-bit
+MSBs round to the 13-bit\newline \verb+1_0000_0000_0000 (1000h)+, where
+the sign bit is still correct. The 18-bit number using during the next
+radix-4 pass is the sign-extended value \verb+11_1111_0000_0000_0000 (3F00h)+ or -4096.
+\end{enumerate}
+
+The asymmetry in the exponent code response for positive and negative inputs
+is caused by Altera's choice to round-up the positive values. If symmetric
+rounding toward zero (or saturation) was used, then the exponent code
+responses would be identical.
+\end{enumerate}
+
+\clearpage
+% -----------------------------------------------------------------------------
+\subsection{Complex-valued Exponential Input}
+% -----------------------------------------------------------------------------
+
+Figure~\ref{fig:altera_burst_exponential} shows plots of the FFT of
+complex-valued exponentials for the Altera Burst I/O and Radix-4 BFP FFTs.
+The MATLAB script generates 128 complex-valued sinusoids with uniformly
+random center frequencies and phase, with full-scale magnitude.
+%
+Figures~\ref{fig:altera_burst_exponential}(a) and (b) show the magnitude
+responses and hence the center frequencies.
+%
+Figures~\ref{fig:altera_burst_exponential}(c) and (d) show polar plots
+of the center frequency magnitude (normalized to full-scale) and phase.
+%
+Figures~\ref{fig:altera_burst_exponential}(e) and (f) show polar plots
+of the error between the fixed-point FFT and the MATLAB FFT.
+
+The main difference between the Altera Burst I/O and Radix-4 FFT responses
+for complex-valued exponential inputs was in the exponent codes;
+the Altera Burst I/O generated exponent codes of 11 and 12, while the
+Radix-4 BFP generated exponent codes of 9, 10, and 11.
+%
+This difference in exponent code values helps interpret the error responses in
+Figures~\ref{fig:altera_burst_exponential}(e) and (f). The Radix-4 BFP FFT
+errors appear larger than those of the Altera Burst I/O FFT because the
+exponent codes of the Radix-2 response are smaller by 2. The Radix-4 BFP
+error response needs to be divided-by-4 (7.90/4 = 1.98) to be on the same
+scale as the Altera Burst I/O FFT error response (1.89).
+
+\textcolor{magenta}{The Altera Burst I/O FFT of full-scale complex-valued
+exponential inputs generates exponent codes 1 or 2 higher than the Radix-4 BFP FFT}.
+
+% -----------------------------------------------------------------------------
+% Complex-valued Exponential Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_exponential_18_18_channels.pdf}\\
+    (a) Altera Burst I/O frequency channels
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_exponential_18_18_channels.pdf}\\
+    (b) Radix-4 BFP frequency channels
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_exponential_18_18_polar.pdf}\\
+    (c) Altera Burst I/O frequency channel phase
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_exponential_18_18_polar.pdf}\\
+    (d) Radix-4 BFP frequency channel phase
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_exponential_18_18_error.pdf}\\
+    (e) Altera Burst I/O error
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_exponential_18_18_error.pdf}\\
+    (f) Radix-4 BFP error
+    \end{center}
+  \end{minipage}
+  \caption{FFT spectral responses for complex-valued exponential input.}
+  \label{fig:altera_burst_exponential}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+\clearpage
+% -----------------------------------------------------------------------------
+% Uniform Noise Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[t]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_uniform_18_18_spectra.pdf}\\
+    (a) Altera Burst I/O
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_uniform_18_18_spectra.pdf}\\
+    (b) Radix-4 BFP
+    \end{center}
+  \end{minipage}
+  \caption{FFT spectral responses for uniform noise input.}
+  \label{fig:altera_burst_uniform}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+\subsection{Uniform Noise Input}
+% -----------------------------------------------------------------------------
+
+Figure~\ref{fig:altera_burst_uniform} shows that the Altera Burst I/O and
+Radix-4 BFP FFTs have similar spectral performance for (full-scale) uniform
+noise input. The main difference between the two FFTs was in the exponent
+codes; the Altera Burst I/O generated exponent codes of 8 and 9, while the
+Radix-4 BFP generated exponent codes of 7 and 8.
+
+\textcolor{magenta}{The Altera Burst I/O FFT of full-scale complex-valued
+uniform noise inputs generates exponent codes 1 higher than the Radix-4 BFP FFT}.
+
+\clearpage
+% -----------------------------------------------------------------------------
+% Gaussian Noise Responses
+% -----------------------------------------------------------------------------
+%
+\begin{table}
+\caption{FFT Noise Power Ratio (NPR) for Gaussian noise input.}
+\label{tab:altera_burst_gaussian_npr}
+\begin{center}
+\begin{tabular}{|c||c|c|c||c|c|c|}
+\hline
+        & \multicolumn{3}{c|}{Altera Burst I/O}
+        & \multicolumn{3}{c|}{Radix-4 BFP}\\
+\cline{2-7}
+LF (dB) & QN (dB) & NPR (dB) & Exp. Codes & QN (dB) & NPR (dB) & Exp. Codes\\
+\hline\hline
+&&&&&&\\
+-15 & -88.5 & 73.5 & 7,8 &  -88.1 & 73.1 & 6,7\\
+-20 & -90.6 & 70.6 & 6,7 &  -92.1 & 72.1 & 5,6\\
+-25 & -92.1 & 67.1 & 5,6 &  -95.2 & 70.2 & 4,5\\
+-30 & -93.6 & 63.6 & 5   & -100.8 & 70.8 & 3,4\\
+-35 & -93.9 & 58.9 & 4,5 & -105.7 & 70.7 & 3\\
+-40 & -94.0 & 54.0 & 3,4 & -107.9 & 67.9 & 2,3\\
+-45 & -94.1 & 49.1 & 2,3 & -108.4 & 63.4 & 1,2\\
+-50 & -94.1 & 44.1 & 2   & -108.5 & 58.5 & 0,1\\
+&&&&&&\\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+% -----------------------------------------------------------------------------
+\subsection{Gaussian Noise Input}
+% -----------------------------------------------------------------------------
+
+Table~\ref{tab:altera_burst_gaussian_npr} and
+Figure~\ref{fig:altera_burst_gaussian} show the FFT spectral responses for
+Gaussian noise input.
+%
+The Loading Factor (LF) is the RMS power of the input signal relative to full-scale,
+eg., a loading factor of -12dB corresponds to an RMS of quarter full-scale.
+%
+The Noise Power Ratio (NPR) is the difference between the input Loading Factor
+and the Quantization Noise (QN).
+%
+Table~\ref{tab:altera_burst_gaussian_npr} shows the QN, and NPR for a range
+of input LFs.
+Figure~\ref{fig:altera_burst_gaussian} show the FFT spectral responses for
+LFs of -15dB, -25dB, and -35dB.
+
+\textcolor{magenta}{The Altera Burst I/O FFT has a quantization noise floor
+that is 14dB (about 2-bits) higher than the Radix-4 BFP FFT}.
+
+% -----------------------------------------------------------------------------
+\subsection{Bandpass Noise Input}
+% -----------------------------------------------------------------------------
+
+Figure~\ref{fig:altera_burst_bandpass} show the FFT spectral responses for
+bandpass noise input. The bandpass signal was generated from complex-valued
+baseband Gaussian noise.
+%
+Figure~\ref{fig:altera_burst_bandpass} show the FFT spectral responses for
+LFs of -20dB, -30dB, and -40dB.
+
+\textcolor{magenta}{The Altera Burst I/O FFT has a quantization noise floor
+that is about 2-bits higher than the Radix-4 BFP FFT}.
+
+% -----------------------------------------------------------------------------
+\subsection{Notch-filtered Noise Input}
+% -----------------------------------------------------------------------------
+
+Figure~\ref{fig:altera_burst_notch} show the FFT spectral responses for
+notch-filtered noise input. The notch-filtered signal was generated from
+complex-valued baseband Gaussian noise.
+%
+Figure~\ref{fig:altera_burst_notch} show the FFT spectral responses for
+LFs of -20dB, -30dB, and -40dB.
+
+\textcolor{magenta}{The Altera Burst I/O FFT has a quantization noise floor
+that is about 2-bits higher than the Radix-4 BFP FFT}.
+
+% -----------------------------------------------------------------------------
+% Gaussian Noise Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_gaussian_18_18_n15dB_spectra.pdf}\\
+    (a) Altera Burst I/O, LF = -15dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_gaussian_18_18_n15dB_spectra.pdf}\\
+    (b) Radix-4 BFP, LF = -15dB
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_gaussian_18_18_n25dB_spectra.pdf}\\
+    (c) Altera Burst I/O, LF = -25dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_gaussian_18_18_n25dB_spectra.pdf}\\
+    (d) Radix-4 BFP, LF = -25dB
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_gaussian_18_18_n35dB_spectra.pdf}\\
+    (e) Altera Burst I/O, LF = -35dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_gaussian_18_18_n35dB_spectra.pdf}\\
+    (f) Radix-4 BFP, LF = -35dB
+    \end{center}
+  \end{minipage}
+  \caption{FFT spectral responses for Gaussian noise input.}
+  \label{fig:altera_burst_gaussian}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Bandpass Noise Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_bandpass_18_18_n20dB_spectra.pdf}\\
+    (a) Altera Burst I/O, LF = -20dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_bandpass_18_18_n20dB_spectra.pdf}\\
+    (b) Radix-4 BFP, LF = -20dB
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_bandpass_18_18_n30dB_spectra.pdf}\\
+    (c) Altera Burst I/O, LF = -30dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_bandpass_18_18_n30dB_spectra.pdf}\\
+    (d) Radix-4 BFP, LF = -30dB
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_bandpass_18_18_n40dB_spectra.pdf}\\
+    (e) Altera Burst I/O, LF = -40dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_bandpass_18_18_n40dB_spectra.pdf}\\
+    (f) Radix-4 BFP, LF = -40dB
+    \end{center}
+  \end{minipage}
+  \caption{FFT spectral responses for bandpass noise input.}
+  \label{fig:altera_burst_bandpass}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Notch-Filterd Noise Responses
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[p]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_notch_18_18_n20dB_spectra.pdf}\\
+    (a) Altera Burst I/O, LF = -20dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_notch_18_18_n20dB_spectra.pdf}\\
+    (b) Radix-4 BFP, LF = -20dB
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_notch_18_18_n30dB_spectra.pdf}\\
+    (c) Altera Burst I/O, LF = -30dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_notch_18_18_n30dB_spectra.pdf}\\
+    (d) Radix-4 BFP, LF = -30dB
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_notch_18_18_n40dB_spectra.pdf}\\
+    (e) Altera Burst I/O, LF = -40dB
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_notch_18_18_n40dB_spectra.pdf}\\
+    (f) Radix-4 BFP, LF = -40dB
+    \end{center}
+  \end{minipage}
+  \caption{FFT spectral responses for notch noise input.}
+  \label{fig:altera_burst_notch}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+\clearpage
+% -----------------------------------------------------------------------------
+% NPR
+% -----------------------------------------------------------------------------
+%
+\begin{figure}[t]
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_npr_18_18.pdf}\\
+    (a) Altera Burst I/O NPR
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_npr_18_18.pdf}\\
+    (b) Radix-4 BFP NPR
+    \end{center}
+  \end{minipage}
+  \vskip5mm
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/altera_burst_npr_18_18_exp_codes.pdf}\\
+    (c) Altera Burst I/O NPR exponent codes
+    \end{center}
+  \end{minipage}
+  \hfil
+  \begin{minipage}{0.5\textwidth}
+    \begin{center}
+    \includegraphics[width=\textwidth]
+    {figures/radix4_bfp_npr_18_18_exp_codes.pdf}\\
+    (d) Radix-4 BFP NPR exponent codes
+    \end{center}
+  \end{minipage}
+  \caption{Noise Power Ratio measured using notch-filtered noise.}
+  \label{fig:altera_burst_npr}
+\end{figure}
+%
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+\subsection{Noise Power Ratio (NPR)}
+% -----------------------------------------------------------------------------
+
+Figure~\ref{fig:altera_burst_npr} shows the Noise Power Ratio (NPR) measured
+for the Altera Burst I/O FFT and the Radix-4 BFP FFT. The NPR was measured
+using notch-filtered noise (see Figure~\ref{fig:altera_burst_notch}) for
+a range of input loading factors.
+
+The NPR for the Radix-4 BFP in Figures~\ref{fig:altera_burst_npr}(b) and (d)
+show how the BFP implements automatic gain control (AGC), preserving the
+signal-to-noise at a constant level (73dB) for a wide range of input powers
+(loading factors of -40dB to -20dB).
+%
+The NPR for the Altera Burst I/O FFT in Figures~\ref{fig:altera_burst_npr}(a)
+and (c) \emph{does not} show the same AGC response as the Radix-4 BFP.
+The Altera Burst FFT consistently has 2-bits less signal to noise relative
+to the MATLAB FFT (of the fixed-point input data) and the exponent codes
+are 2 higher than the Radix-4 BFP exponent codes.
+
+\textcolor{magenta}{The Altera Burst I/O FFT NPR is about 2-bits lower than the
+Radix-4 BFP FFT (for input loading factors of less than -20dB)}.

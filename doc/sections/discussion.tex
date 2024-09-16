@@ -1,0 +1,10 @@
+% =============================================================================
+\section{Discussion}
+% =============================================================================
+\label{sec:discussion}
+
+The Altera Burst I/O FFT implements unconditionally scaling by 2-bits, so
+the exponent code is never observed to be zero. This unconditional scaling
+effectively reduces the signal-to-noise by 2-bits. The impact of this
+implementation detail is that that Altera Burst I/O FFT core may need to
+be instantiated with a bit-width 2-bits wider than may have been expected.
